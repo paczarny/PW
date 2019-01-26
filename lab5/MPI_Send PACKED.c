@@ -4,60 +4,72 @@
 #include <time.h>
 #include "mpi.h"
 
- float mark_average,tuition;
- int years;
- char buffer[100];
- int position;
+typedef struct {
+        float mark_average;
+        float tuition;
+        int years;
+
+}student;
 
 int main( int argc, char** argv ){ 
+
+    int rank, size, source, dest, tag, i; 
+    MPI_Status status;
+    double start_t, end_t;
+    
+    MPI_Init( &argc, &argv );
   
-  int rank, size, source, dest, tag, i; 
-  MPI_Status status;
-  clock_t start_t, end_t, total_t;
-  
-  MPI_Init( &argc, &argv );
+
+    int blocklengths[3] = {1,1,1};
+    MPI_Datatype types[3] = {MPI_FLOAT, MPI_FLOAT, MPI_INT};
+    MPI_Datatype mpi_student_type;
+    MPI_Aint     offsets[3];
+
+    offsets[0] = offsetof(student, mark_average);
+    offsets[1] = offsetof(student, tuition);
+    offsets[1] = offsetof(student, years);
+
+    MPI_Type_create_struct(3, blocklengths, offsets, types, &mpi_student_type);
+    MPI_Type_commit(&mpi_student_type);
+
+
+
   MPI_Comm_rank( MPI_COMM_WORLD, &rank ); 
   MPI_Comm_size( MPI_COMM_WORLD, &size );
-  
-  if(size<=1){
-    printf("Pojedynczy proces o randze: %d (brak komunikatów)\n", rank);
-    exit(0);
-  }
 
-
-
-    if( rank != 0 ){ 
-      dest=0; 
-      tag=0; 
-      years = 23;
-      tuition = 2500.1;
-      mark_average = (float)rank;
-      position=0;
-      MPI_Pack(&mark_average, 1, MPI_FLOAT, buffer, 100, &position, MPI_COMM_WORLD);
-      MPI_Pack(&tuition, 1, MPI_FLOAT, buffer, 100, &position, MPI_COMM_WORLD);
-      MPI_Pack(&years, 1, MPI_INT, buffer, 100, &position, MPI_COMM_WORLD);
-      start_t = clock();
-      MPI_Send(buffer, 100, MPI_PACKED, dest, tag, MPI_COMM_WORLD );
-      end_t = clock();
-      printf("Czas wykonania zadania: (%d).\n", (end_t-start_t));
-    } else {
-      char buffer[100];
-      for( i=1; i<size; i++ ) { 
-	    MPI_Recv(buffer, 100, MPI_PACKED, MPI_ANY_SOURCE, 
-		  MPI_ANY_TAG, MPI_COMM_WORLD, &status );
-      position=0;
-      MPI_Unpack(buffer, 100, &position, &mark_average, 1, MPI_FLOAT, MPI_COMM_WORLD);
-      MPI_Unpack(buffer, 100, &position, &tuition, 1, MPI_FLOAT, MPI_COMM_WORLD);
-      MPI_Unpack(buffer, 100, &position, &years, 1, MPI_INT, MPI_COMM_WORLD);
-	    /*printf("Dane od procesu o randze (i=%d): MPI_SOURCE: (%d).\n",i, status.MPI_SOURCE);
-      printf("Student lat: %d, srednia ocen: %.2f, czesne do zaplaty: %.2f.\n", 
-	    years,mark_average,tuition);*/
-      }
-      
+    if(size<=1){
+      printf("Min ilość procesów to 2.\n", rank);
+      exit(0);
     }
 
+    start_t = MPI_Wtime();
 
+    if( rank != 0 ){ 
+      char buff[100];
+      int position=0;
+      student pierwszak;
+      MPI_Recv(buff, 100, MPI_PACKED, 0, 0, MPI_COMM_WORLD, &status );
+      MPI_Unpack(buff, 100, &position, &pierwszak, 1, mpi_student_type, MPI_COMM_WORLD);
+    } else {
+      char buffer[100];
+      int position=0;
+      student pierwszak;
+      pierwszak.years = 23;
+      pierwszak.tuition = 2500.1;
+      pierwszak.mark_average = 3.0;
+      MPI_Pack(&pierwszak, 1, mpi_student_type, buffer, 100, &position, MPI_COMM_WORLD);
+      for( i=1; i<size; i++ ) { 
+         MPI_Send(buffer, 100, MPI_PACKED, i, 0, MPI_COMM_WORLD );
+      }
+    }
+
+  end_t = MPI_Wtime();
   MPI_Finalize(); 
+
+  if (rank == 0) {
+    printf("time %lf /n", (end_t-start_t)*1000000.);//mikrosekund
+  }
+
   
   return(0);
 
